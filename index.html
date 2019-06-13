@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+canvas {
+  display: inline-block;
+  vertical-align: middle;
+}
+span {
+  display: inline-block;
+  margin: 0 16px;
+  color: #2c3e50;
+  font-family: Verdana;
+  font-size: 16px;
+  font-weight: bold;
+}
+</style>
+</head>
+<body>
+<script src="mnist.js"></script>
+<script>
+mnist.get = (
+  digit = parseInt(Math.random() * 10),
+  idx = parseInt(Math.random() * mnist[digit].length / 28/28)
+) => mnist[digit].slice(idx * 28*28, idx * 28*28 + 28*28);
+mnist.range = (digit,start,end) => end
+  ? Array(end-start+1).fill().map((_,idx) => mnist[digit].slice(idx * 28*28, idx * 28*28 + 28*28))
+  : (() => {
+    end = [];
+    while (end.length < start) {
+      let rnd = parseInt(Math.random() * (mnist[digit].length / 28/28));
+      if (!end.includes(rnd)) {end.push(rnd); }
+    }
+    return end.map(idx => mnist.get(digit,idx));
+  })();
+
+const drawDigit = sample => {
+  let canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 28;
+  let room = canvas.getContext`2d`;
+  room.fillStyle = '#000';
+  room.beginPath();
+  room.fillRect(0, 0, 28, 28);
+  let imgData = room.getImageData(0, 0, 28, 28);
+  let data = imgData.data;
+  for (let i = 0; i < data.length; i += 4) {data[i] = data[i+1] = data[i+2] = sample[i/4] * 255; }
+  imgData.data = data;
+  room.putImageData(imgData, 0, 0);
+  document.body.appendChild(canvas);
+};
+
+const KNN = (k,training,sample) => {
+  let nearests = [];
+  Array(k).fill().forEach(() => {
+    let chosen;
+    training.filter(model => !nearests.includes(model)).reduce(
+      (min,model,idx) => (
+        idx = model.i.reduce((sum,dimen,idx) => sum + (dimen - sample[idx])**2, 0)
+      ) < min ? (chosen = model, idx) : min
+    , Infinity);
+    nearests.push(chosen);
+  });
+  let outs = Array.from(new Set(training.map(model => model.o)));
+  let votes = outs.map(out => nearests
+    .filter(model => model.o == out)
+    .reduce((ac,model) => ac + 1 / Math.sqrt(
+      model.i.reduce((sum,dimen,idx) => sum + (dimen - sample[idx])**2, 0)
+    ), 0)
+  );
+  return outs[votes.indexOf(Math.max(...votes))];
+};
+
+const LGR = pts => {
+  let w = Array(pts[0].i.length + 1).fill(0);
+  let v = Array(pts[0].i.length + 1).fill(0);
+  let n = 0;
+  const d = (pt,w,idx) => {
+    let s = w.reduce((ac,e,idx) => ac + e * pt.i.concat(1)[idx], 0);
+    return -pt.i.concat(1)[idx] * (pt.o + (pt.o-1) * Math.E**s) / (Math.E**s + 1);
+  };
+  let loop = setInterval(() => {
+    if (n++ < 50) {
+      Array.from(pts)
+        .sort(() => Math.random() - .5)
+        .forEach(pt => w = w.map((e,idx) => e - .01*d(pt,w,idx)));
+    } else {
+      v = v.map((e,idx) => {
+        let newW = Array.from(w);
+        newW[idx] -= .9*e;
+        return .9*e + .01 * pts.reduce((ac,pt) => ac + d(pt,newW,idx), 0);
+      });
+      w = w.map((e,idx) => e - v[idx]);
+      //if (v.every(e => Math.abs(e) < 1e-5)) {return false; }
+    }
+    console.log(w);
+  }, 100);
+  //while (loop());
+  return w;
+};
+
+const oneHot = (training,sample) => {
+  for (let i = 0; i <= 9; i++) {
+    newTraining = training.map(model => ({i: model.i, o: model.o == i ? 1 : 0}));
+    
+  }
+}
+
+let training = [];
+Array(10).fill().forEach((_,idx) => training.push(
+  ...mnist.range(idx,0,499).map(digit => ({i:digit, o:idx}))
+));
+let test = [];
+Array(10).fill().forEach((_,idx) => test.push(
+  ...mnist.range(idx,700,799).map(digit => ({i:digit, o:idx}))
+));
+test.sort(() => Math.random() - .5);
+test.length = 100;
+test.forEach(sample => {
+  drawDigit(sample.i);
+  let result = KNN(10,training,sample.i);
+  let span = document.createElement('span');
+  span.style.color = sample.o == result ? '#27ae60' : '#e74c3c'
+  span.innerHTML = `${result} (${sample.o})`;
+  document.body.appendChild(span);
+});
+</script>
+</body>
+</html>
