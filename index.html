@@ -18,6 +18,7 @@ span {
 </head>
 <body>
 <script src="mnist.js"></script>
+<script src="lgr.js"></script>
 <script>
 mnist.get = (
   digit = parseInt(Math.random() * 10),
@@ -49,78 +50,145 @@ const drawDigit = sample => {
   document.body.appendChild(canvas);
 };
 
+const shuffle = a => {
+  let j, x;
+  for (let i = a.length - 1; i > 0; i--) {
+    j = Math.random() * (i + 1) | 0;
+    x = a[i]; a[i] = a[j]; a[j] = x;
+  }
+  return a;
+};
+
 const KNN = (k,training,sample) => {
   let nearests = [];
   Array(k).fill().forEach(() => {
     let chosen;
     training.filter(model => !nearests.includes(model)).reduce(
       (min,model,idx) => (
-        idx = model.i.reduce((sum,dimen,idx) => sum + (dimen - sample[idx])**2, 0)
+        idx = model.inp.reduce((sum,dimen,idx) => sum + (dimen - sample[idx])**2, 0)
       ) < min ? (chosen = model, idx) : min
     , Infinity);
     nearests.push(chosen);
   });
-  let outs = Array.from(new Set(training.map(model => model.o)));
+  let outs = Array.from(new Set(training.map(model => model.out)));
   let votes = outs.map(out => nearests
-    .filter(model => model.o == out)
+    .filter(model => model.out == out)
     .reduce((ac,model) => ac + 1 / Math.sqrt(
-      model.i.reduce((sum,dimen,idx) => sum + (dimen - sample[idx])**2, 0)
+      model.inp.reduce((sum,dimen,idx) => sum + (dimen - sample[idx])**2, 0)
     ), 0)
   );
   return outs[votes.indexOf(Math.max(...votes))];
 };
 
 const LGR = pts => {
-  let w = Array(pts[0].i.length + 1).fill(0);
-  let v = Array(pts[0].i.length + 1).fill(0);
-  let n = 0;
-  const d = (pt,w,idx) => {
-    let s = w.reduce((ac,e,idx) => ac + e * pt.i.concat(1)[idx], 0);
-    return -pt.i.concat(1)[idx] * (pt.o + (pt.o-1) * Math.E**s) / (Math.E**s + 1);
-  };
-  let loop = setInterval(() => {
-    if (n++ < 50) {
-      Array.from(pts)
-        .sort(() => Math.random() - .5)
-        .forEach(pt => w = w.map((e,idx) => e - .01*d(pt,w,idx)));
-    } else {
-      v = v.map((e,idx) => {
-        let newW = Array.from(w);
-        newW[idx] -= .9*e;
-        return .9*e + .01 * pts.reduce((ac,pt) => ac + d(pt,newW,idx), 0);
-      });
-      w = w.map((e,idx) => e - v[idx]);
-      //if (v.every(e => Math.abs(e) < 1e-5)) {return false; }
+  let n = pts[0].inp.length + 1,
+      w = Array(n).fill(0),
+      m = Array(n).fill(0),
+      v = Array(n).fill(0),
+      realW,
+      c = 1,
+      err = [];
+  const derivative = pt => {
+    let s = 0;
+    for (let i = 0; i < n - 1; i++) {s += w[i] * pt.inp[i]; }
+    s += w[n - 1];
+    return -(pt.out - 1 + 1 / (Math.E ** s + 1));
+  }
+  const error = _ => pts.reduce((acc,pt) => {
+    let s = pt.inp.reduce((a,e,i) => a - 1e-5 * w[i] * e, 0) - 1e-5 * w[n - 1];
+    return acc
+      - pt.out * Math.log(1 / (Math.E ** s + 1));
+      - (1 - pt.out) * Math.log(1 - 1 / (Math.E ** s + 1));
+  }, 0);
+  const loop = _ => {
+    for (let i = 0; i < n; i++) {
+      let g = 0;
+      for (let j = 0, l = pts.length; j < l; j++) {
+        g += derivative(pts[j],i);
+      }
+      m[i] = .9 * m[i] + .1 * g;
+      v[i] = .999 * v[i] + .001 * g ** 2;
+      w[i] -= .001 * Math.sqrt(1 - .999 ** c) / (1 - .9 ** c) * m[i] / (v[i] ** .5 + 1e-8);
     }
-    console.log(w);
-  }, 100);
-  //while (loop());
-  return w;
+    console.log(err[err.length] = error());
+    if (err[err.length - 1] > err[err.length - 2]) {
+      for (let i = 0; i < n; i++) {
+        w[i] += .001 * Math.sqrt(1 - .999 ** c) / (1 - .9 ** c) * m[i] / (v[i] ** .5 + 1e-8);
+      }
+      return false;
+    }
+    c++;
+    return true;
+  };
+  const adam = _ => {
+    let g = 0;
+    for (let i = pts.length - 1; i >= 0; i--) {
+      g += derivative(pts[i]);
+    }
+    for (let i = 0; i < n; i++) {
+      
+    }
+  };
+  const sgd = _ => {
+    let spts = shuffle(pts), spt;
+    for (let j = spts.length - 1; j >= 0; j--) {
+      let d = derivative(spt = spts[j]);
+      for (let i = 0; i < n - 1; i++) {
+        w[i] -= .01 * (v[i] = .9 * v[i] + .1 * d * spt.inp[i]);
+      }
+      w[n - 1] -= .01 * (v[n - 1] = .9 * v[n - 1] + .1 * d);
+    }
+    console.log(err[err.length] = error());
+    if (err[err.length - 1] === Math.min(...err)) {
+      console.info('readW change');
+      realW = w;
+    }
+    return true;
+  };
+  for (let i = 0; i < 300; i++) {sgd(); }
+  return realW;
 };
 
-const oneHot = (training,sample) => {
-  for (let i = 0; i <= 9; i++) {
-    newTraining = training.map(model => ({i: model.i, o: model.o == i ? 1 : 0}));
-    
-  }
+/* // FOR LOGISTIC
+let mnistLGR = [];
+for (let i = 0; i <= 9; i++) {
+  console.log(`===== ${i} =====`);
+  let training = [];
+  for (let j = 0; j <= 9; j++) {training.push(
+    ...mnist.range(j, 0, 699).map(digit => ({inp:digit, out:(j === i ? 1 : 0)}))
+  ); }
+  mnistLGR[i] = LGR(training);
 }
+// END FOR LOGISTIC */
 
+/* //FOR KNN
 let training = [];
 Array(10).fill().forEach((_,idx) => training.push(
-  ...mnist.range(idx,0,499).map(digit => ({i:digit, o:idx}))
+  ...mnist.range(idx,0,699).map(digit => ({inp:digit, out:idx}))
 ));
+// END FOR KNN */
+
 let test = [];
 Array(10).fill().forEach((_,idx) => test.push(
-  ...mnist.range(idx,700,799).map(digit => ({i:digit, o:idx}))
+  ...mnist.range(idx,700,799).map(digit => ({inp:digit, out:idx}))
 ));
-test.sort(() => Math.random() - .5);
-test.length = 100;
-test.forEach(sample => {
-  drawDigit(sample.i);
-  let result = KNN(10,training,sample.i);
+test.forEach((sample,idx) => {
+  drawDigit(sample.inp);
+  // FOR LOGISTIC
+  let p = mnistLGR.map(w => 1 / (
+    1 + Math.E ** -(
+      sample.inp.reduce((a,e,i) => a + e * w[i], 0)
+      + w[w.length - 1]
+    )
+  )),
+      result = p.indexOf(Math.max(...p));
+  // END FOR LOGISTIC
+  /* // FOR KNN
+  let result = KNN(10,training,sample.inp);
+  // END FOR KNN */
   let span = document.createElement('span');
-  span.style.color = sample.o == result ? '#27ae60' : '#e74c3c'
-  span.innerHTML = `${result} (${sample.o})`;
+  span.style.color = sample.out === result ? '#27ae60' : (console.log(idx), console.count(), '#e74c3c')
+  span.innerHTML = `${result} (${sample.out})`;
   document.body.appendChild(span);
 });
 </script>
