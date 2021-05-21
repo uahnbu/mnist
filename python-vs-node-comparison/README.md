@@ -24,7 +24,7 @@ Trainable params: 843658
 Non-trainable params: 0
 ```
 ```
-node app.js
+> node app.js
 
 Epoch 1 / 10
 eta=0.0 ===========================================================>
@@ -61,7 +61,7 @@ Evaluation result:
   Loss = 0.022; Accuracy = 0.993
 ```
 ```
-py main.py
+> py main.py
 
 Epoch 1/10
 422/422 [==============================] - 35s 78ms/step - loss: 0.2308 - accuracy: 0.9296 - val_loss: 0.0503 - val_accuracy: 0.9860
