@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "@tensorflow/tfjs-node": "^3.6.1",
+    "benchmark": "^2.1.4",
+    "canvas": "^2.7.0"
+  }
+}
